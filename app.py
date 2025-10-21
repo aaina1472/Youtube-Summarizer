@@ -3,7 +3,7 @@ import os
 import yt_dlp
 import whisper
 from transformers import pipeline
-import imageio_ffmpeg
+import imageio_ffmpeg  # automatically provides ffmpeg binary
 
 # -------------------------------
 # Page config
@@ -36,7 +36,11 @@ summarizer = load_summarizer()
 # Helper functions
 # -------------------------------
 def download_audio(youtube_url, filename="audio.mp3"):
-    ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+    try:
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()  # get ffmpeg binary automatically
+    except Exception:
+        ffmpeg_path = "ffmpeg"  # fallback to system-wide ffmpeg
+
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': filename,
@@ -54,32 +58,24 @@ def download_audio(youtube_url, filename="audio.mp3"):
     return filename
 
 def transcribe_audio(audio_file):
-    return whisper_model.transcribe(audio_file)["text"]
+    result = whisper_model.transcribe(audio_file)
+    return result["text"]
 
-def chunk_text(text, max_chunk=2000):
-    """Split text into chunks safely without breaking sentences abruptly"""
-    import re
-    sentences = re.split(r'(?<=[.!?]) +', text)
-    chunks = []
-    current_chunk = ""
-    for sentence in sentences:
-        if len(current_chunk) + len(sentence) <= max_chunk:
-            current_chunk += sentence + " "
-        else:
-            chunks.append(current_chunk.strip())
-            current_chunk = sentence + " "
-    if current_chunk:
-        chunks.append(current_chunk.strip())
-    return chunks
+def chunk_text(text, max_chunk=1000):
+    return [text[i:i+max_chunk] for i in range(0, len(text), max_chunk)]
 
-def summarize_chunks(chunks):
+def recursive_summarize(text):
+    chunks = chunk_text(text, max_chunk=2000)
     summaries = []
     progress_bar = st.progress(0)
     for i, chunk in enumerate(chunks):
         summary = summarizer(chunk, max_length=150, min_length=50, do_sample=False)[0]['summary_text']
         summaries.append(summary)
         progress_bar.progress((i + 1) / len(chunks))
-    return " ".join(summaries)
+    combined_summary = " ".join(summaries)
+    if len(combined_summary) > 2000:
+        return recursive_summarize(combined_summary)
+    return combined_summary
 
 def format_summary_pointwise(summary_text):
     points = summary_text.split(". ")
@@ -100,11 +96,8 @@ if st.button("📝 Summarize"):
             with st.spinner("⏳ Transcribing audio..."):
                 transcript_text = transcribe_audio(audio_file)
 
-            with st.spinner("⏳ Splitting transcript into chunks..."):
-                chunks = chunk_text(transcript_text)
-
             with st.spinner("⏳ Summarizing transcript..."):
-                summary_text = summarize_chunks(chunks)
+                summary_text = recursive_summarize(transcript_text)
 
             formatted_summary = format_summary_pointwise(summary_text)
 
@@ -112,6 +105,7 @@ if st.button("📝 Summarize"):
             st.success(formatted_summary)
             st.balloons()
 
+            # Remove audio file after processing
             os.remove(audio_file)
 
         except Exception as e:
