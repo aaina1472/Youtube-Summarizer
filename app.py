@@ -12,14 +12,15 @@ st.set_page_config(
     layout="wide",
 )
 
+st.markdown("<h1 style='text-align: center; color: #FF4B4B;'>🎬 YouTube Video Summarizer</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #666;'>Paste any YouTube video link and get a concise summary!</p>", unsafe_allow_html=True)
+st.write("---")
+
+
 st.markdown(
     "⚠️ **Note:** For best performance, use videos up to ~5 minutes. Longer videos may exceed memory limits on Streamlit Cloud.", 
     unsafe_allow_html=True
 )
-
-st.markdown("<h1 style='text-align: center; color: #FF4B4B;'>🎬 YouTube Video Summarizer</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #666;'>Paste any YouTube video link and get a concise summary!</p>", unsafe_allow_html=True)
-st.write("---")
 
 # -------------------------------
 # Load models (cached)
