@@ -124,7 +124,7 @@ def refine_with_llm(bulleted_summary, transcript=None):
 
     if not openai_api_key:
         # No key available -> fallback
-        return bulleted_summary
+        return bulleted_summary, "Summary without API"
 
     openai.api_key = openai_api_key
 
