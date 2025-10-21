@@ -3,7 +3,7 @@ import os
 import yt_dlp
 import whisper
 from transformers import pipeline
-import ffmpeg
+import imageio_ffmpeg  # to get ffmpeg binary automatically
 
 # -------------------------------
 # Page config
@@ -36,6 +36,7 @@ summarizer = load_summarizer()
 # Helper functions
 # -------------------------------
 def download_audio(youtube_url, filename="audio.mp3"):
+    ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()  # get ffmpeg binary path automatically
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': filename,
@@ -46,6 +47,7 @@ def download_audio(youtube_url, filename="audio.mp3"):
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
+        'ffmpeg_location': ffmpeg_path  # use ffmpeg from imageio-ffmpeg
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([youtube_url])
@@ -106,4 +108,5 @@ if st.button("📝 Summarize"):
             st.error(f"❌ Something went wrong: {e}")
     else:
         st.warning("⚠️ Please enter a valid YouTube URL.")
+
 
