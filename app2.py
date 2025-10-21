@@ -124,7 +124,7 @@ def refine_with_llm(bulleted_summary, transcript=None):
 
     if not openai_api_key:
         # No key available -> fallback
-        return bulleted_summary, "No LLM key provided — using local summary."
+        return bulleted_summary
 
     openai.api_key = openai_api_key
 
@@ -218,5 +218,4 @@ if st.button("📝 Summarize"):
 
 # Persist last summary so page refresh doesn't lose it
 if st.session_state.last_summary:
-    st.markdown("### 📝 Last Summary")
     st.success(st.session_state.last_summary)
