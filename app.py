@@ -1,7 +1,9 @@
+import os
 import streamlit as st
 import yt_dlp
 from faster_whisper import WhisperModel
 from transformers import pipeline
+import openai
 
 # -------------------------------
 # Page config
@@ -12,30 +14,72 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("<h1 style='text-align: center; color: #FF4B4B;'>🎬 YouTube Video Summarizer</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #666;'>Paste any YouTube video link and get a concise summary!</p>", unsafe_allow_html=True)
-st.write("---")
-
-
-st.markdown(
-    "⚠️ **Note:** For best performance, use videos up to ~5 minutes. Longer videos may exceed memory limits on Streamlit Cloud.", 
-    unsafe_allow_html=True
-)
+# -------------------------------
+# Custom CSS for styling
+# -------------------------------
+st.markdown("""
+    <style>
+        body {
+            background-color: #f5f7fa;
+        }
+        .main-title {
+            text-align: center;
+            color: #ff4b4b;
+            font-size: 2.5em;
+            font-weight: 700;
+            margin-bottom: 0.2em;
+        }
+        .sub-text {
+            text-align: center;
+            font-size: 1.1em;
+            color: #555;
+            margin-bottom: 2em;
+        }
+        .stTextInput>div>div>input {
+            border-radius: 10px;
+            border: 2px solid #ff4b4b;
+        }
+        .summary-card {
+            background-color: white;
+            padding: 1.5em;
+            border-radius: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            margin-top: 1.5em;
+        }
+        .summary-header {
+            color: #ff4b4b;
+            font-weight: 600;
+            font-size: 1.4em;
+            margin-bottom: 0.5em;
+        }
+        .summary-text {
+            font-size: 1.1em;
+            line-height: 1.6em;
+            color: #333;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # -------------------------------
-# Session state: store last summary and audio file
+# Header
+# -------------------------------
+st.markdown("<h1 class='main-title'>🎬 YouTube Video Summarizer</h1>", unsafe_allow_html=True)
+st.markdown("<p class='sub-text'>Paste any YouTube video link and get a concise, clean summary!</p>", unsafe_allow_html=True)
+
+# -------------------------------
+# Session state
 # -------------------------------
 if "last_summary" not in st.session_state:
-    st.session_state.last_summary = ""   # stores the most recent formatted summary
+    st.session_state.last_summary = ""
 if "last_audio" not in st.session_state:
-    st.session_state.last_audio = None  # stores path to last downloaded audio
+    st.session_state.last_audio = None
 
 # -------------------------------
-# Load models (cached)
+# Load models
 # -------------------------------
 @st.cache_resource
 def load_whisper():
-    return WhisperModel("base")  # faster-whisper local model
+    return WhisperModel("base")  # or "tiny" if memory limited
 
 @st.cache_resource
 def load_summarizer():
@@ -45,7 +89,7 @@ whisper_model = load_whisper()
 summarizer = load_summarizer()
 
 # -------------------------------
-# Helper functions
+# Helper functions (download, transcribe, chunk, summarize)
 # -------------------------------
 def download_audio(youtube_url, filename="audio.webm"):
     ydl_opts = {
@@ -64,7 +108,19 @@ def transcribe_audio(audio_file):
     return text
 
 def chunk_text(text, max_chunk=1000):
-    return [text[i:i+max_chunk] for i in range(0, len(text), max_chunk)]
+    import re
+    sentences = re.split(r'(?<=[.!?]) +', text)
+    chunks = []
+    cur = ""
+    for s in sentences:
+        if len(cur) + len(s) + 1 <= max_chunk:
+            cur += (s + " ")
+        else:
+            chunks.append(cur.strip())
+            cur = s + " "
+    if cur.strip():
+        chunks.append(cur.strip())
+    return chunks
 
 def recursive_summarize(text):
     chunks = chunk_text(text, max_chunk=2000)
@@ -75,27 +131,56 @@ def recursive_summarize(text):
         summaries.append(summary)
         progress_bar.progress((i + 1) / len(chunks))
     combined_summary = " ".join(summaries)
-    if len(combined_summary) > 2000:
-        return recursive_summarize(combined_summary)
+    if len(combined_summary) > 3000:
+        chunks2 = chunk_text(combined_summary, max_chunk=2000)
+        summaries2 = []
+        for i, c in enumerate(chunks2):
+            summaries2.append(summarizer(c, max_length=150, min_length=50, do_sample=False)[0]['summary_text'])
+        combined_summary = " ".join(summaries2)
     return combined_summary
 
 def format_summary_pointwise(summary_text):
     import re
-    # Split by sentence endings (., !, ?)
     points = re.split(r'(?<=[.!?]) +', summary_text)
     formatted = "\n".join([f"• {point.strip()}" for point in points if point.strip()])
     return formatted
 
+# -------------------------------
+# LLM refinement (optional)
+# -------------------------------
+def refine_with_llm(bulleted_summary, transcript=None):
+    openai_api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", None)
+    if not openai_api_key:
+        return bulleted_summary, None
+    openai.api_key = openai_api_key
+    system_prompt = (
+        "You are a concise summarization assistant. "
+        "Given a rough summary, produce short, factual bullet points."
+    )
+    user_prompt = f"Rough summary:\n{bulleted_summary}\n\nPlease improve it clearly."
+    try:
+        resp = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=400,
+            temperature=0.2,
+        )
+        refined = resp["choices"][0]["message"]["content"].strip()
+        return refined, None
+    except Exception as e:
+        return bulleted_summary, f"LLM refine failed: {e}"
 
 # -------------------------------
-# Streamlit UI
+# Streamlit UI logic
 # -------------------------------
 url = st.text_input("🔗 Enter YouTube URL here:")
 
 if st.button("📝 Summarize"):
     if url:
         try:
-            # Clear previous summary and delete previous audio file if present
             st.session_state.last_summary = ""
             if st.session_state.last_audio:
                 try:
@@ -113,18 +198,32 @@ if st.button("📝 Summarize"):
 
             with st.spinner("⏳ Summarizing transcript..."):
                 summary_text = recursive_summarize(transcript_text)
+                formatted_summary = format_summary_pointwise(summary_text)
 
-            formatted_summary = format_summary_pointwise(summary_text)
+            with st.spinner("🤖 Enhancing summary with LLM..."):
+                refined_summary, llm_error = refine_with_llm(formatted_summary, transcript=transcript_text)
 
-            # Save only the latest summary to session state
-            st.session_state.last_summary = formatted_summary
+            # Prefer refined if no error
+            final_summary = refined_summary if llm_error is None else formatted_summary
 
-            # Display only the latest summary
-            st.markdown("### 📝 Summary (Point-wise)")
-            st.success(st.session_state.last_summary)
+            # Prepend "In this video, "
+            if final_summary:
+                final_summary = "In this video, " + final_summary[0].lower() + final_summary[1:]
+
+            # Display nicely in a card
+            st.markdown(f"""
+                <div class='summary-card'>
+                    <div class='summary-header'>📝 Video Summary</div>
+                    <div class='summary-text'>{final_summary}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+            if llm_error:
+                st.warning(f"LLM refine fallback: {llm_error}")
+
             st.balloons()
 
-            # Clean up audio file after processing
+            # Cleanup audio
             if st.session_state.last_audio:
                 try:
                     os.remove(st.session_state.last_audio)
@@ -136,7 +235,3 @@ if st.button("📝 Summarize"):
             st.error(f"❌ Something went wrong: {e}")
     else:
         st.warning("⚠️ Please enter a valid YouTube URL.")
-
-# If a summary exists in session state (from previous run), show it (this ensures a single persistent result)
-if st.session_state.last_summary:
-    st.success(st.session_state.last_summary)
