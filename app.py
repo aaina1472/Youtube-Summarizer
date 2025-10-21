@@ -1,9 +1,10 @@
 import streamlit as st
 import os
 import yt_dlp
-import whisper
-from transformers import pipeline
-import imageio_ffmpeg  # automatically provides ffmpeg binary
+import torch
+import librosa
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Tokenizer, pipeline
+import imageio_ffmpeg  # to get ffmpeg binary automatically
 
 # -------------------------------
 # Page config
@@ -22,25 +23,23 @@ st.write("---")
 # Load models (cached)
 # -------------------------------
 @st.cache_resource
-def load_whisper():
-    return whisper.load_model("base")
-
-@st.cache_resource
 def load_summarizer():
     return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", device=-1)
 
-whisper_model = load_whisper()
+@st.cache_resource
+def load_wav2vec_model():
+    tokenizer = Wav2Vec2Tokenizer.from_pretrained("facebook/wav2vec2-base-960h")
+    model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h")
+    return tokenizer, model
+
 summarizer = load_summarizer()
+tokenizer, wav2vec_model = load_wav2vec_model()
 
 # -------------------------------
 # Helper functions
 # -------------------------------
 def download_audio(youtube_url, filename="audio.mp3"):
-    try:
-        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()  # get ffmpeg binary automatically
-    except Exception:
-        ffmpeg_path = "ffmpeg"  # fallback to system-wide ffmpeg
-
+    ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': filename,
@@ -58,8 +57,14 @@ def download_audio(youtube_url, filename="audio.mp3"):
     return filename
 
 def transcribe_audio(audio_file):
-    result = whisper_model.transcribe(audio_file)
-    return result["text"]
+    # Load audio and convert to 16kHz
+    audio, rate = librosa.load(audio_file, sr=16000)
+    input_values = tokenizer(audio, return_tensors="pt").input_values
+    with torch.no_grad():
+        logits = wav2vec_model(input_values).logits
+    predicted_ids = torch.argmax(logits, dim=-1)
+    transcription = tokenizer.decode(predicted_ids[0])
+    return transcription
 
 def chunk_text(text, max_chunk=1000):
     return [text[i:i+max_chunk] for i in range(0, len(text), max_chunk)]
