@@ -1,7 +1,8 @@
 import streamlit as st
 import yt_dlp
+import requests
 from transformers import pipeline
-import os
+import tempfile
 
 # -------------------------------
 # Page config
@@ -12,16 +13,14 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("<h1 style='text-align: center; color: #FF4B4B;'>🎬 YouTube Video Summarizer</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #666;'>Paste any YouTube video link and get a concise summary!</p>", unsafe_allow_html=True)
-st.write("---")
+st.title("🎬 YouTube Video Summarizer")
+st.write("Paste any YouTube URL and get a concise summary!")
 
 # -------------------------------
-# Load summarizer (lightweight model)
+# Load summarizer
 # -------------------------------
 @st.cache_resource
 def load_summarizer():
-    # Uses a small, fast summarization model
     return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", device=-1)
 
 summarizer = load_summarizer()
@@ -29,51 +28,40 @@ summarizer = load_summarizer()
 # -------------------------------
 # Helper functions
 # -------------------------------
-def download_audio(youtube_url, filename="audio.mp3"):
+def download_audio(youtube_url):
+    temp_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': filename,
-        'quiet': True,
-        'no_warnings': True,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
+        'outtmpl': temp_file.name,
+        'quiet': True
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([youtube_url])
-    return filename
+    return temp_file.name
 
-def transcribe_audio_placeholder(audio_file):
+def transcribe_with_api(audio_file):
     """
-    Placeholder transcription: Instead of Whisper, ask user to manually provide transcript
-    or use a preprocessed transcript stored elsewhere.
+    Uses OpenAI Whisper API to transcribe audio without installing Whisper locally.
+    Requires OPENAI_API_KEY set as environment variable.
     """
-    st.warning("⚠️ Streamlit cannot run Whisper here. Please provide transcript manually for now.")
-    transcript = st.text_area("Paste transcript here (from YouTube captions or Colab):")
-    return transcript
+    import os
+    import openai
+    openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def chunk_text(text, max_chunk=1000):
-    return [text[i:i+max_chunk] for i in range(0, len(text), max_chunk)]
+    with open(audio_file, "rb") as f:
+        transcript = openai.audio.transcriptions.create(
+            model="whisper-1",
+            file=f
+        )
+    return transcript['text']
 
-def recursive_summarize(text):
-    chunks = chunk_text(text, max_chunk=2000)
+def summarize_text(text):
+    chunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
     summaries = []
-    progress_bar = st.progress(0)
-    for i, chunk in enumerate(chunks):
+    for chunk in chunks:
         summary = summarizer(chunk, max_length=150, min_length=50, do_sample=False)[0]['summary_text']
         summaries.append(summary)
-        progress_bar.progress((i + 1) / len(chunks))
-    combined_summary = " ".join(summaries)
-    if len(combined_summary) > 2000:
-        return recursive_summarize(combined_summary)
-    return combined_summary
-
-def format_summary_pointwise(summary_text):
-    points = summary_text.split(". ")
-    formatted = "\n".join([f"• {point.strip()}" for point in points if point.strip()])
-    return formatted
+    return " ".join(summaries)
 
 # -------------------------------
 # Streamlit UI
@@ -86,20 +74,14 @@ if st.button("📝 Summarize"):
             with st.spinner("⏳ Downloading audio..."):
                 audio_file = download_audio(url)
 
-            with st.spinner("⏳ Transcribe audio (or paste transcript)..."):
-                transcript_text = transcribe_audio_placeholder(audio_file)
+            with st.spinner("⏳ Transcribing audio via API..."):
+                transcript_text = transcribe_with_api(audio_file)
 
-            if transcript_text:
-                with st.spinner("⏳ Summarizing transcript..."):
-                    summary_text = recursive_summarize(transcript_text)
-                    formatted_summary = format_summary_pointwise(summary_text)
-                    st.markdown("### 📝 Summary (Point-wise)")
-                    st.success(formatted_summary)
-                    st.balloons()
+            with st.spinner("⏳ Summarizing transcript..."):
+                summary_text = summarize_text(transcript_text)
 
-            # Clean up
-            if os.path.exists(audio_file):
-                os.remove(audio_file)
+            st.markdown("### 📝 Summary")
+            st.success(summary_text)
 
         except Exception as e:
             st.error(f"❌ Something went wrong: {e}")
