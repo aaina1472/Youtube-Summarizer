@@ -4,18 +4,15 @@ import yt_dlp
 from faster_whisper import WhisperModel
 from transformers import pipeline
 
-# -------------------------------
 # Page config
-# -------------------------------
 st.set_page_config(
     page_title="YouTube Video Summarizer 🎬",
     page_icon="🎬",
     layout="wide",
 )
 
-# -------------------------------
 # Custom CSS for styling
-# -------------------------------
+
 st.markdown("""
     <style>
         body {
@@ -76,24 +73,24 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------
+
 # Header
-# -------------------------------
+
 st.markdown("<h1 class='main-title'>🎬 YouTube Video Summarizer</h1>", unsafe_allow_html=True)
 st.markdown("<p class='sub-text'>Paste a YouTube link and get a short, clean summary instantly.</p>", unsafe_allow_html=True)
 st.markdown("<p class='note-text'>⚠️ For best performance, use videos up to ~5 minutes. Longer videos may cause memory issues on Streamlit Cloud.</p>", unsafe_allow_html=True)
 
-# -------------------------------
+
 # Session state
-# -------------------------------
+
 if "last_summary" not in st.session_state:
     st.session_state.last_summary = ""
 if "last_audio" not in st.session_state:
     st.session_state.last_audio = None
 
-# -------------------------------
+
 # Load models
-# -------------------------------
+
 @st.cache_resource
 def load_whisper():
     return WhisperModel("base")  # switch to "tiny" if memory is limited
@@ -105,9 +102,9 @@ def load_summarizer():
 whisper_model = load_whisper()
 summarizer = load_summarizer()
 
-# -------------------------------
+
 # Helper functions
-# -------------------------------
+
 def download_audio(youtube_url, filename="audio.webm"):
     ydl_opts = {
         "format": "bestaudio/best",
@@ -162,9 +159,9 @@ def format_summary_pointwise(summary_text):
     formatted = "\n".join([f"• {point.strip()}" for point in points if point.strip()])
     return formatted
 
-# -------------------------------
+
 # Streamlit UI logic
-# -------------------------------
+
 url = st.text_input("🔗 Enter YouTube URL here:")
 
 if st.button("📝 Summarize", key="summarize"):
