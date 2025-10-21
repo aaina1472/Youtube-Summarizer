@@ -3,6 +3,7 @@ import os
 import yt_dlp
 import whisper
 from transformers import pipeline
+import ffmpeg
 
 # -------------------------------
 # Page config
@@ -22,7 +23,7 @@ st.write("---")
 # -------------------------------
 @st.cache_resource
 def load_whisper():
-    return whisper.load_model("base")  # smaller model for speed
+    return whisper.load_model("base")
 
 @st.cache_resource
 def load_summarizer():
@@ -70,23 +71,39 @@ def recursive_summarize(text):
         return recursive_summarize(combined_summary)
     return combined_summary
 
+def format_summary_pointwise(summary_text):
+    points = summary_text.split(". ")
+    formatted = "\n".join([f"• {point.strip()}" for point in points if point.strip()])
+    return formatted
+
 # -------------------------------
 # Streamlit UI
 # -------------------------------
 url = st.text_input("🔗 Enter YouTube URL here:")
 
-if url:
-    try:
-        with st.spinner("⏳ Downloading audio..."):
-            audio_file = download_audio(url)
-        with st.spinner("⏳ Transcribing audio..."):
-            transcript_text = transcribe_audio(audio_file)
-        with st.spinner("⏳ Summarizing transcript..."):
-            summary_text = recursive_summarize(transcript_text)
-        st.markdown("### 📝 Summary")
-        st.success(summary_text)
-        st.balloons()
-        # Remove audio file after processing
-        os.remove(audio_file)
-    except Exception as e:
-        st.error(f"❌ Something went wrong: {e}")
+if st.button("📝 Summarize"):
+    if url:
+        try:
+            with st.spinner("⏳ Downloading audio..."):
+                audio_file = download_audio(url)
+
+            with st.spinner("⏳ Transcribing audio..."):
+                transcript_text = transcribe_audio(audio_file)
+
+            with st.spinner("⏳ Summarizing transcript..."):
+                summary_text = recursive_summarize(transcript_text)
+
+            formatted_summary = format_summary_pointwise(summary_text)
+
+            st.markdown("### 📝 Summary (Point-wise)")
+            st.success(formatted_summary)
+            st.balloons()
+
+            # Remove audio file after processing
+            os.remove(audio_file)
+
+        except Exception as e:
+            st.error(f"❌ Something went wrong: {e}")
+    else:
+        st.warning("⚠️ Please enter a valid YouTube URL.")
+
