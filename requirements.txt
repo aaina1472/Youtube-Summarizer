@@ -1,7 +1,5 @@
-streamlit==1.26.0
-torch>=2.0.1
-transformers>=4.41.0
-yt-dlp>=2025.10.15
-librosa>=0.10.1
-soundfile>=0.12.1
-imageio-ffmpeg>=0.4.11
+streamlit
+yt-dlp
+transformers
+torch
+openai
