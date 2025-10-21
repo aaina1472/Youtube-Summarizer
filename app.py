@@ -139,5 +139,4 @@ if st.button("📝 Summarize"):
 
 # If a summary exists in session state (from previous run), show it (this ensures a single persistent result)
 if st.session_state.last_summary:
-    st.markdown("### 📝 Last Summary")
     st.success(st.session_state.last_summary)
