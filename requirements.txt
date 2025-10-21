@@ -3,4 +3,5 @@ yt-dlp==2025.10.21
 openai-whisper==20230606
 transformers==4.41.0
 torch==2.1.0
+torchaudio==2.3.1
 imageio-ffmpeg==0.4.10
