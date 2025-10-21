@@ -4,4 +4,4 @@ faster-whisper
 transformers
 torch
 sentencepiece
-whisper @ git+https://github.com/openai/whisper.git
+
