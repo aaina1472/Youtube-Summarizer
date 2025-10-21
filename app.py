@@ -1,5 +1,7 @@
 import streamlit as st
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+import os
+import yt_dlp
+import whisper
 from transformers import pipeline
 
 # -------------------------------
@@ -16,59 +18,46 @@ st.markdown("<p style='text-align: center; color: #666;'>Paste any YouTube video
 st.write("---")
 
 # -------------------------------
-# Load summarizer
+# Load models (cached)
 # -------------------------------
 @st.cache_resource
-def load_summarizer():
-    return pipeline(
-        "summarization",
-        model="sshleifer/distilbart-cnn-12-6",
-        device=-1  # CPU
-    )
+def load_whisper():
+    return whisper.load_model("base")  # smaller model for speed
 
+@st.cache_resource
+def load_summarizer():
+    return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", device=-1)
+
+whisper_model = load_whisper()
 summarizer = load_summarizer()
 
 # -------------------------------
 # Helper functions
 # -------------------------------
-def get_transcript(video_url):
-    """Fetch transcript (manual or auto-generated) for a YouTube video."""
-    try:
-        # Extract video ID
-        if "v=" in video_url:
-            video_id = video_url.split("v=")[-1].split("&")[0]
-        elif "youtu.be/" in video_url:
-            video_id = video_url.split("youtu.be/")[-1].split("?")[0]
-        else:
-            st.error("❌ Invalid YouTube URL format.")
-            return None
+def download_audio(youtube_url, filename="audio.mp3"):
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': filename,
+        'quiet': True,
+        'no_warnings': True,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([youtube_url])
+    return filename
 
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-
-        try:
-            transcript = transcript_list.find_transcript(['en']).fetch()
-        except NoTranscriptFound:
-            transcript = transcript_list.find_generated_transcript(['en']).fetch()
-
-        transcript_text = " ".join([t['text'] for t in transcript])
-        return transcript_text
-
-    except TranscriptsDisabled:
-        st.error("❌ This video does not have transcripts enabled.")
-        return None
-    except NoTranscriptFound:
-        st.error("❌ No transcript found for this video in English.")
-        return None
-    except Exception as e:
-        st.error(f"❌ Something went wrong: {e}")
-        return None
+def transcribe_audio(audio_file):
+    result = whisper_model.transcribe(audio_file)
+    return result["text"]
 
 def chunk_text(text, max_chunk=1000):
-    """Split text into chunks."""
     return [text[i:i+max_chunk] for i in range(0, len(text), max_chunk)]
 
 def recursive_summarize(text):
-    """Summarize text recursively for long transcripts."""
     chunks = chunk_text(text, max_chunk=2000)
     summaries = []
     progress_bar = st.progress(0)
@@ -83,3 +72,21 @@ def recursive_summarize(text):
 
 # -------------------------------
 # Streamlit UI
+# -------------------------------
+url = st.text_input("🔗 Enter YouTube URL here:")
+
+if url:
+    try:
+        with st.spinner("⏳ Downloading audio..."):
+            audio_file = download_audio(url)
+        with st.spinner("⏳ Transcribing audio..."):
+            transcript_text = transcribe_audio(audio_file)
+        with st.spinner("⏳ Summarizing transcript..."):
+            summary_text = recursive_summarize(transcript_text)
+        st.markdown("### 📝 Summary")
+        st.success(summary_text)
+        st.balloons()
+        # Remove audio file after processing
+        os.remove(audio_file)
+    except Exception as e:
+        st.error(f"❌ Something went wrong: {e}")
