@@ -216,6 +216,3 @@ if st.button("📝 Summarize"):
     else:
         st.warning("⚠️ Please enter a valid YouTube URL.")
 
-# Persist last summary so page refresh doesn't lose it
-if st.session_state.last_summary:
-    st.success(st.session_state.last_summary)
