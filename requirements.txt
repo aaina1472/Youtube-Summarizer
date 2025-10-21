@@ -1,4 +1,7 @@
 streamlit
-youtube_transcript_api
+yt-dlp
+openai-whisper
 transformers
 torch
+ffmpeg-python
+
