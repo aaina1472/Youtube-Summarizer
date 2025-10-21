@@ -23,6 +23,14 @@ st.markdown(
 )
 
 # -------------------------------
+# Session state: store last summary and audio file
+# -------------------------------
+if "last_summary" not in st.session_state:
+    st.session_state.last_summary = ""   # stores the most recent formatted summary
+if "last_audio" not in st.session_state:
+    st.session_state.last_audio = None  # stores path to last downloaded audio
+
+# -------------------------------
 # Load models (cached)
 # -------------------------------
 @st.cache_resource
@@ -87,8 +95,18 @@ url = st.text_input("🔗 Enter YouTube URL here:")
 if st.button("📝 Summarize"):
     if url:
         try:
+            # Clear previous summary and delete previous audio file if present
+            st.session_state.last_summary = ""
+            if st.session_state.last_audio:
+                try:
+                    os.remove(st.session_state.last_audio)
+                except Exception:
+                    pass
+                st.session_state.last_audio = None
+
             with st.spinner("⏳ Downloading audio..."):
                 audio_file = download_audio(url)
+                st.session_state.last_audio = audio_file
 
             with st.spinner("⏳ Transcribing audio..."):
                 transcript_text = transcribe_audio(audio_file)
@@ -98,11 +116,28 @@ if st.button("📝 Summarize"):
 
             formatted_summary = format_summary_pointwise(summary_text)
 
+            # Save only the latest summary to session state
+            st.session_state.last_summary = formatted_summary
+
+            # Display only the latest summary
             st.markdown("### 📝 Summary (Point-wise)")
-            st.success(formatted_summary)
+            st.success(st.session_state.last_summary)
             st.balloons()
+
+            # Clean up audio file after processing
+            if st.session_state.last_audio:
+                try:
+                    os.remove(st.session_state.last_audio)
+                except Exception:
+                    pass
+                st.session_state.last_audio = None
 
         except Exception as e:
             st.error(f"❌ Something went wrong: {e}")
     else:
         st.warning("⚠️ Please enter a valid YouTube URL.")
+
+# If a summary exists in session state (from previous run), show it (this ensures a single persistent result)
+if st.session_state.last_summary:
+    st.markdown("### 📝 Last Summary")
+    st.success(st.session_state.last_summary)
