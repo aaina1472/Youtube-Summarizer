@@ -1,9 +1,6 @@
-streamlit==1.25.0
+streamlit==1.29.0
 yt-dlp==2025.10.21
-git+https://github.com/openai/whisper.git
-transformers==4.35.0
+openai-whisper==20230606
+transformers==4.41.0
 torch==2.1.0
-sentencepiece==0.1.99
 imageio-ffmpeg==0.4.10
-ffmpeg-python==0.3.0
-
