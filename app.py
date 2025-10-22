@@ -111,6 +111,7 @@ def download_audio(youtube_url, filename="audio.webm"):
         "outtmpl": filename,
         "quiet": True,
         "no_warnings": True,
+        "geo_bypass": True
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([youtube_url])
